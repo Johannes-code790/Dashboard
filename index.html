@@ -115,7 +115,8 @@
         document.getElementById('status').innerText = "🔴 Fehler";
     } else {
         // Dynamisches Topic basierend auf der ID
-        const topic = `sensors/${deviceId}/data`;
+        const topic = `esp32-${deviceId}/sensor`;
+
         
         const client = mqtt.connect(brokerUrl, options);
 
