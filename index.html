@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Company IoT Dashboard</title>
+    <title>Company Live & History Dashboard</title>
+    
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
         header { background: white; width: 100%; padding: 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
@@ -15,7 +17,7 @@
         .value { font-size: 2.5em; font-weight: bold; margin: 10px 0; color: #333; }
         .unit { font-size: 0.4em; color: #999; margin-left: 5px; }
         .source-tag { position: absolute; bottom: 5px; right: 10px; font-size: 0.6em; color: #ccc; }
-        #status { font-weight: bold; margin-top: 10px; }
+        #status { font-weight: bold; margin-top: 10px; transition: color 0.3s; }
     </style>
 </head>
 <body>
@@ -53,33 +55,36 @@
     const CONFIG = {
         supabaseUrl: 'https://rrdbrezbsttlkzeaudch.supabase.co',
         supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyZGJyZXpic3R0bGt6ZWF1ZGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0Mzc1OTAsImV4cCI6MjA4NzAxMzU5MH0.YzkCMSTOggB0fH0Wf6jLgw5Qb4nJM5IjfUQKbIsb-Bc',
-        dbTable: 'wetterdaten',
-        dbMacColumn: 'device_id', 
+        dbTable: 'wetterdaten', // Korrekter Tabellenname aus deiner Policy
+        dbMacColumn: 'device_id', // Deine Spalte in Supabase
         mqttBroker: 'wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt',
-        mqttUser: 'web_user',
+        mqttUser: 'web_user', // Dein EMQX User
         mqttPass: 'web_password123'
     };
 
+    // 2. ID aus URL extrahieren
     const urlParams = new URLSearchParams(window.location.search);
     const deviceId = urlParams.get('id');
 
-    // Supabase Initialisierung (Darf nur EINMAL im gesamten File stehen!)
-    const sbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
+    // Supabase Initialisierung - KORRIGIERT: 'supabase' statt 'supabasejs'
+    const dbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
+    // Hilfsfunktion zum UI-Update
     function updateDisplay(data, source) {
         const fields = ['temp', 'hum', 'co2', 'tvoc'];
         fields.forEach(field => {
-            const el = document.getElementById(field);
-            if (el && data[field] !== undefined) {
-                el.innerText = data[field];
-                document.getElementById(field + '-source').innerText = source;
+            if (data[field] !== undefined) {
+                document.getElementById(field).innerText = data[field];
+                document.getElementById(`${field}-source`).innerText = source;
             }
         });
     }
 
+    // 3. DATEN AUS DATENBANK LADEN (History)
     async function fetchDatabaseHistory() {
         if (!deviceId) return;
-        const { data, error } = await sbClient
+        
+        const { data, error } = await dbClient
             .from(CONFIG.dbTable)
             .select('*')
             .eq(CONFIG.dbMacColumn, deviceId)
@@ -94,9 +99,11 @@
         }
     }
 
+    // 4. MQTT LIVE VERBINDUNG
     function startMqttLive() {
         if (!deviceId) return;
-        const topic = `esp32-${deviceId}/sensor`;
+
+        const topic = `esp32-${deviceId}/sensor`; // Topic Format für deine Regeln
         const client = mqtt.connect(CONFIG.mqttBroker, {
             username: CONFIG.mqttUser,
             password: CONFIG.mqttPass
@@ -110,11 +117,15 @@
 
         client.on('message', (t, message) => {
             try {
-                updateDisplay(JSON.parse(message.toString()), "Live (MQTT)");
-            } catch (e) { console.error(e); }
+                const liveData = JSON.parse(message.toString());
+                updateDisplay(liveData, "Live (MQTT)");
+            } catch (e) {
+                console.error("JSON Fehler:", e);
+            }
         });
     }
 
+    // Start-Reihenfolge
     if (deviceId) {
         fetchDatabaseHistory().then(startMqttLive);
     } else {
