@@ -64,7 +64,7 @@
     const deviceId = urlParams.get('id');
 
     // Supabase Initialisierung (Darf nur EINMAL im gesamten File stehen!)
-    const sbClient = supabasejs.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
+    const sbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
     function updateDisplay(data, source) {
         const fields = ['temp', 'hum', 'co2', 'tvoc'];
