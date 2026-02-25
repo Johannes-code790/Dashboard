@@ -3,90 +3,147 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Company IoT Dashboard</title>
+    <title>Company Live & History Dashboard</title>
+    
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
         header { background: white; width: 100%; padding: 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; width: 90%; max-width: 1000px; margin-top: 30px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; position: relative; }
         .label { color: #666; font-size: 0.8em; text-transform: uppercase; }
         .value { font-size: 2.5em; font-weight: bold; margin: 10px 0; color: #333; }
-        .unit { font-size: 0.5em; color: #999; }
-        #status { font-weight: bold; margin-top: 10px; }
+        .unit { font-size: 0.4em; color: #999; margin-left: 5px; }
+        .source-tag { position: absolute; bottom: 5px; right: 10px; font-size: 0.6em; color: #ccc; }
+        #status { font-weight: bold; margin-top: 10px; transition: color 0.3s; }
+        .error-box { background: #ffcdd2; color: #b71c1c; padding: 15px; border-radius: 8px; margin: 20px; display: none; width: 80%; }
     </style>
 </head>
 <body>
 
 <header>
-    <h1>Company Sensor Monitor</h1>
-    <div id="status" style="color: #e67e22;">⏳ Verbinde...</div>
+    <h1>Company IoT Monitor</h1>
+    <div id="status" style="color: #e67e22;">⏳ Initialisierung...</div>
 </header>
+
+<div id="error-display" class="error-box"></div>
 
 <div class="container">
     <div class="card">
         <div class="label">Temperatur</div>
         <div class="value" style="color: #ff5722;"><span id="temp">--.-</span><span class="unit">°C</span></div>
+        <div class="source-tag" id="temp-source">Keine Daten</div>
     </div>
     <div class="card">
         <div class="label">Feuchtigkeit</div>
         <div class="value" style="color: #2196f3;"><span id="hum">--</span><span class="unit">%</span></div>
+        <div class="source-tag" id="hum-source">Keine Daten</div>
     </div>
     <div class="card">
         <div class="label">CO2</div>
         <div class="value" style="color: #4caf50;"><span id="co2">----</span><span class="unit">ppm</span></div>
+        <div class="source-tag" id="co2-source">Keine Daten</div>
     </div>
     <div class="card">
         <div class="label">TVOC</div>
         <div class="value" style="color: #9c27b0;"><span id="tvoc">----</span><span class="unit">ppb</span></div>
+        <div class="source-tag" id="tvoc-source">Keine Daten</div>
     </div>
 </div>
 
 <script>
-    // 1. ID aus URL holen (?id=123456)
+    // --- 1. KONFIGURATION (HIER DEINE DATEN EINTRAGEN) ---
+    const CONFIG = {
+        supabaseUrl: 'DEINE_SUPABASE_URL',
+        supabaseKey: 'DEIN_SUPABASE_ANON_KEY',
+        dbTable: 'DEIN_TABELLEN_NAME',
+        dbMacColumn: 'mac', // Name der Spalte für die MAC-Adresse
+        mqttBroker: 'wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt',
+        mqttUser: 'web_user',
+        mqttPass: 'web_password123'
+    };
+
+    // 2. ID aus URL extrahieren
     const urlParams = new URLSearchParams(window.location.search);
     const deviceId = urlParams.get('id');
 
-    // 2. Verbindungsdaten
-    const brokerUrl = 'wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt';
-    const options = {
-        username: 'web_user',        // Dein EMQX-Username
-        password: 'web_password123', // Dein EMQX-Passwort
-        clean: true
-    };
+    // Supabase Initialisierung
+    const supabase = supabasejs.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
 
-    if (!deviceId) {
-        document.getElementById('status').innerText = "🔴 FEHLER: Keine ?id= in der URL angegeben!";
-    } else {
-        // KORRIGIERTES TOPIC
-        const topic = `esp32-${deviceId}/sensor`;
+    // Hilfsfunktion zum UI-Update
+    function updateDisplay(data, source) {
+        const fields = ['temp', 'hum', 'co2', 'tvoc'];
+        fields.forEach(field => {
+            if (data[field] !== undefined) {
+                document.getElementById(field).innerText = data[field];
+                document.getElementById(`${field}-source`).innerText = source;
+            }
+        });
+    }
+
+    // 3. DATEN AUS DATENBANK LADEN (History)
+    async function fetchDatabaseHistory() {
+        if (!deviceId) return;
         
-        const client = mqtt.connect(brokerUrl, options);
+        const { data, error } = await supabase
+            .from(CONFIG.dbTable)
+            .select('*')
+            .eq(CONFIG.dbMacColumn, deviceId)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        if (error) {
+            console.error("DB-Fehler:", error);
+        } else if (data && data.length > 0) {
+            updateDisplay(data[0], "Datenbank (Historie)");
+            document.getElementById('status').innerText = "📊 Letzte DB-Werte geladen...";
+        }
+    }
+
+    // 4. MQTT LIVE VERBINDUNG
+    function startMqttLive() {
+        if (!deviceId) {
+            document.getElementById('error-display').style.display = 'block';
+            document.getElementById('error-display').innerText = "⚠️ Fehler: Keine Geräte-ID in der URL (?id=...) gefunden.";
+            return;
+        }
+
+        const topic = `esp32-${deviceId}/sensor`;
+        const client = mqtt.connect(CONFIG.mqttBroker, {
+            username: CONFIG.mqttUser,
+            password: CONFIG.mqttPass
+        });
 
         client.on('connect', () => {
-            document.getElementById('status').innerText = `🟢 ONLINE - Gerät: ${deviceId}`;
+            document.getElementById('status').innerText = `🟢 LIVE - Gerät: ${deviceId}`;
             document.getElementById('status').style.color = "green";
             client.subscribe(topic);
         });
 
         client.on('message', (t, message) => {
             try {
-                // Verarbeitet das JSON-Format
-                const data = JSON.parse(message.toString());
-                if(data.temp !== undefined) document.getElementById('temp').innerText = data.temp;
-                if(data.hum !== undefined)  document.getElementById('hum').innerText = data.hum;
-                if(data.co2 !== undefined)  document.getElementById('co2').innerText = data.co2;
-                if(data.tvoc !== undefined) document.getElementById('tvoc').innerText = data.tvoc;
+                const liveData = JSON.parse(message.toString());
+                updateDisplay(liveData, "Live (MQTT)");
             } catch (e) {
-                console.log("Rohdaten empfangen:", message.toString());
+                console.error("JSON Fehler:", e);
             }
         });
 
-        client.on('error', (err) => {
-            document.getElementById('status').innerText = "🔴 VERBINDUNGSFEHLER";
-            console.error(err);
+        client.on('error', () => {
+            document.getElementById('status').innerText = "🔴 MQTT Verbindungsfehler";
+            document.getElementById('status').style.color = "red";
         });
     }
+
+    // Start-Reihenfolge
+    if (deviceId) {
+        fetchDatabaseHistory().then(startMqttLive);
+    } else {
+        document.getElementById('status').innerText = "🔴 ID fehlt";
+    }
+
 </script>
 </body>
 </html>
