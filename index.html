@@ -117,7 +117,7 @@
         // Dynamisches Topic basierend auf der ID
         const topic = `sensors/${deviceId}/data`;
         
-        const client = mqtt.connect(brokerUrl, options);
+        const client = mqtt.connect('wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt', options);
 
         client.on('connect', () => {
             document.getElementById('status').innerText = `🟢 ONLINE - Gerät: ${deviceId}`;
