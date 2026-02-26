@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Enterprise Edition</title>
+    <title>QBS Command Center | Enterprise Analytics</title>
     <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -58,14 +58,8 @@
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Luftfeuchtigkeit Verlauf</h3>
-                <div id="chart-hum" class="h-[300px]"></div>
-            </div>
-            <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TVOC Verlauf</h3>
-                <div id="chart-tvoc" class="h-[300px]"></div>
-            </div>
+            <div class="dashboard-card"><h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Luftfeuchtigkeit Verlauf</h3><div id="chart-hum" class="h-[300px]"></div></div>
+            <div class="dashboard-card"><h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TVOC Verlauf</h3><div id="chart-tvoc" class="h-[300px]"></div></div>
         </div>
     </main>
 
@@ -96,12 +90,8 @@
             stroke: { curve: 'smooth', width: 2.5 },
             markers: { size: 0 },
             dataLabels: { enabled: false },
-            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.02 } },
-            xaxis: { 
-                type: 'datetime', 
-                labels: { datetimeUTC: false, style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } },
-                axisBorder: { show: false }, axisTicks: { show: false }
-            },
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.02 } },
+            xaxis: { type: 'datetime', labels: { datetimeUTC: false, style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } }, axisBorder: { show: false }, axisTicks: { show: false } },
             yaxis: { min: min, max: max, tickAmount: 4, labels: { formatter: (v) => v.toFixed(unit === 'ppb' ? 0 : 1) + unit, style: { colors: '#94a3b8', fontWeight: 700 } } },
             grid: { borderColor: '#f1f5f9', strokeDashArray: 3 }
         });
@@ -115,13 +105,7 @@
             aqiGauge = new ApexCharts(document.querySelector("#aqi-gauge"), {
                 chart: { type: 'radialBar', height: 250 },
                 series: [0],
-                plotOptions: {
-                    radialBar: {
-                        startAngle: -90, endAngle: 90,
-                        hollow: { size: '65%' },
-                        dataLabels: { name: { show: false }, value: { fontSize: '32px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.ceil((v/100)*5) } }
-                    }
-                },
+                plotOptions: { radialBar: { startAngle: -90, endAngle: 90, hollow: { size: '65%' }, dataLabels: { name: { show: false }, value: { fontSize: '32px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.ceil((v/100)*5) } } } },
                 fill: { type: 'gradient', gradient: { colorStops: [{ offset: 0, color: "#10b981" }, { offset: 50, color: "#f59e0b" }, { offset: 100, color: "#ef4444" }]}}
             });
             aqiGauge.render();
@@ -134,75 +118,51 @@
             const { data } = await sbClient.from(CONFIG.dbTable).select('*').eq(CONFIG.dbMacColumn, dbId).gte('created_at', cutoff.toISOString()).order('created_at', { ascending: true });
 
             if (data) {
-                const xaxisConfig = {
-                    min: cutoff.getTime(),
-                    max: now.getTime(),
-                    labels: { format: currentDays === 1 ? 'HH:mm' : 'dd. MMM' },
-                    tickAmount: currentDays === 1 ? 6 : (currentDays === 5 ? 5 : 6)
-                };
-                const update = (chart, dataPoints) => {
-                    chart.updateSeries([{ data: dataPoints }], true);
+                // FLEXIBLES SAMPLING: Begrenze auf 300 Punkte für Performance
+                const step = Math.ceil(data.length / 300);
+                const sampledData = (step > 1) ? data.filter((_, i) => i % step === 0) : data;
+
+                const xaxisConfig = { min: cutoff.getTime(), max: now.getTime(), labels: { format: currentDays === 1 ? 'HH:mm' : 'dd. MMM' }, tickAmount: 6 };
+                const update = (chart, points) => {
+                    chart.updateSeries([{ data: points }], true);
                     chart.updateOptions({ xaxis: xaxisConfig });
                 };
-                update(chartT, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })));
-                update(chartH, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })));
-                update(chartV, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })));
-                if(data.length > 0) {
-                    const last = data[data.length-1];
-                    updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2);
-                }
+
+                update(chartT, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })));
+                update(chartH, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })));
+                update(chartV, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })));
+                if(data.length > 0) { const last = data[data.length-1]; updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2); }
             }
         }
 
         function updateUI(metric, val) {
-            if (val === undefined || val === null) return;
             const el = document.getElementById(`val-${metric}`);
             if (el) el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
             if (metric === 'co2') {
-                const status = document.getElementById('aqi-status');
-                let aqiIndex = 1;
-                if (val < 600) { aqiIndex = 1; status.innerText = "Exzellent"; status.style.color = "#059669"; }
-                else if (val < 1000) { aqiIndex = 2; status.innerText = "Gut"; status.style.color = "#10b981"; }
-                else if (val < 1500) { aqiIndex = 3; status.innerText = "Mäßig"; status.style.color = "#d97706"; }
-                else if (val < 2000) { aqiIndex = 4; status.innerText = "Schlecht"; status.style.color = "#ea580c"; }
-                else { aqiIndex = 5; status.innerText = "Kritisch"; status.style.color = "#dc2626"; }
-                aqiGauge.updateSeries([(aqiIndex / 5) * 100]);
+                const s = document.getElementById('aqi-status');
+                let idx = 1;
+                if (val < 600) { idx = 1; s.innerText = "Exzellent"; s.style.color = "#059669"; }
+                else if (val < 1000) { idx = 2; s.innerText = "Gut"; s.style.color = "#10b981"; }
+                else if (val < 1500) { idx = 3; s.innerText = "Mäßig"; s.style.color = "#d97706"; }
+                else if (val < 2000) { idx = 4; s.innerText = "Schlecht"; s.style.color = "#ea580c"; }
+                else { idx = 5; s.innerText = "Kritisch"; s.style.color = "#dc2626"; }
+                aqiGauge.updateSeries([(idx / 5) * 100]);
             }
         }
 
         function initMqtt() {
-            // Zufällige ClientID verhindert connack timeout durch doppelte Logins
-            const clientId = 'web_client_' + Math.random().toString(16).substr(2, 8);
-            
-            const options = {
-                clientId: clientId,
-                username: CONFIG.mqttUser,
-                password: CONFIG.mqttPass,
-                clean: true,
-                connectTimeout: 4000,
-                reconnectPeriod: 2000,
-                path: '/mqtt' // EXTREM WICHTIG FÜR EMQX WSS
-            };
-
+            const clientId = 'web_' + Math.random().toString(16).substring(2, 10);
+            const options = { clientId, username: CONFIG.mqttUser, password: CONFIG.mqttPass, clean: true, connectTimeout: 5000, reconnectPeriod: 2000, protocolVersion: 4, path: '/mqtt' };
             const client = mqtt.connect(CONFIG.mqttBroker, options);
-
-            client.on('connect', () => {
+            client.on('connect', () => { 
                 document.getElementById('status-dot').className = 'live-dot bg-green-500';
                 document.getElementById('status-text').innerText = 'NETWORK LIVE';
                 client.subscribe(`${mqttId}/sensor`);
             });
-
-            client.on('error', (err) => {
-                console.error("MQTT Fehler:", err);
+            client.on('error', () => { 
                 document.getElementById('status-dot').className = 'live-dot bg-red-500';
                 document.getElementById('status-text').innerText = 'ERROR';
             });
-
-            client.on('close', () => {
-                document.getElementById('status-dot').className = 'live-dot bg-red-500';
-                document.getElementById('status-text').innerText = 'ERROR';
-            });
-
             client.on('message', (t, msg) => {
                 const data = JSON.parse(msg.toString());
                 const ts = Date.now();
@@ -213,13 +173,7 @@
             });
         }
 
-        async function changeTimeRange(d) {
-            currentDays = d;
-            document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active', 'text-white'));
-            const activeBtn = document.getElementById(`btn-${d}`);
-            if(activeBtn) activeBtn.classList.add('active', 'text-white');
-            await fetchHistory();
-        }
+        async function changeTimeRange(d) { currentDays = d; document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active', 'text-white')); document.getElementById(`btn-${d}`).classList.add('active', 'text-white'); await fetchHistory(); }
 
         initCharts();
         if (rawId) fetchHistory().then(initMqtt);
