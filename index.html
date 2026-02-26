@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QBS Command Center | Stock Market Edition</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:,"> <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -93,16 +93,13 @@
             chart: { type: 'area', height: '100%', toolbar: { show: false }, animations: { enabled: true, easing: 'linear' }, zoom: { enabled: false } },
             series: [{ name: unit, data: [] }],
             colors: [color],
-            stroke: { curve: 'smooth', width: 2.5 },
+            stroke: { curve: 'smooth', width: 2 },
             markers: { size: 0 },
             dataLabels: { enabled: false },
             fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.02 } },
             xaxis: { 
                 type: 'datetime', 
-                labels: { 
-                    datetimeUTC: false, 
-                    style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } 
-                },
+                labels: { datetimeUTC: false, style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } },
                 axisBorder: { show: false },
                 axisTicks: { show: false }
             },
@@ -143,9 +140,19 @@
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
-                // AGGRESSIVES SAMPLING: Max 150 Punkte für echten Stock-Look
-                const step = Math.ceil(data.length / 150); 
-                const sampledData = data.filter((_, i) => i % step === 0);
+                // ZEITBASIERTES SAMPLING: Wir erlauben max. 1 Punkt pro Minute (bei 1 Tag) 
+                // oder alle 10 Minuten (bei 5 Tagen), damit der "Block" am Ende verschwindet.
+                const minInterval = (currentDays === 1) ? 60000 : 600000; 
+                let lastTime = 0;
+                
+                const sampledData = data.filter(d => {
+                    const currentTime = new Date(d.created_at).getTime();
+                    if (currentTime - lastTime >= minInterval) {
+                        lastTime = currentTime;
+                        return true;
+                    }
+                    return false;
+                });
 
                 const xaxisConfig = getXAxisConfig(currentDays, data);
 
@@ -164,25 +171,12 @@
         }
 
         function getXAxisConfig(days, fullData) {
-            // Zeiteinstellungen exakt nach deinen Referenzen
             const minTime = new Date(fullData[0].created_at).getTime();
             const maxTime = new Date(fullData[fullData.length-1].created_at).getTime();
 
-            if (days === 1) return { 
-                min: minTime, max: maxTime, 
-                labels: { format: 'HH:mm' }, 
-                tickAmount: 6 // Erzeugt ca. 4-Stunden-Schritte
-            };
-            if (days === 5) return { 
-                min: minTime, max: maxTime, 
-                labels: { format: 'dd. MMM' }, 
-                tickAmount: 4 // Erzeugt Tages-Markierungen
-            };
-            return { 
-                min: minTime, max: maxTime, 
-                labels: { format: 'dd. MMM' }, 
-                tickAmount: 6 // Übersichtliche Schritte über den Monat
-            };
+            if (days === 1) return { min: minTime, max: maxTime, labels: { format: 'HH:mm' }, tickAmount: 6 };
+            if (days === 5) return { min: minTime, max: maxTime, labels: { format: 'dd. MMM' }, tickAmount: 4 };
+            return { min: minTime, max: maxTime, labels: { format: 'dd. MMM' }, tickAmount: 6 };
         }
 
         function updateUI(metric, val) {
