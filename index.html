@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Historical Data Fix</title>
-    <link rel="icon" href="data:,">
+    <title>QBS Command Center | Enterprise Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
-
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; }
         .dashboard-card { background: white; border-radius: 1.5rem; padding: 1.5rem; border: 1px solid #e2e8f0; }
@@ -65,21 +63,21 @@
             <div class="dashboard-card flex flex-col items-center justify-center text-center">
                 <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">AQI Index (1-5)</h3>
                 <div id="aqi-gauge" class="w-full"></div>
-                <p id="aqi-status" class="text-sm font-black uppercase italic text-slate-500">Suche Daten...</p>
+                <p id="aqi-status" class="text-sm font-black uppercase italic text-slate-500">Lade...</p>
             </div>
             <div class="dashboard-card lg:col-span-2">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 text-orange-500">Temperatur Verlauf</h3>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Temperatur Verlauf (°C)</h3>
                 <div id="chart-temp" class="h-[300px]"></div>
             </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 text-blue-500">Luftfeuchtigkeit Verlauf</h3>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Luftfeuchtigkeit Verlauf (%)</h3>
                 <div id="chart-hum" class="h-[300px]"></div>
             </div>
             <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 text-purple-500">TVOC Verlauf</h3>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TVOC Verlauf (ppb)</h3>
                 <div id="chart-tvoc" class="h-[300px]"></div>
             </div>
         </div>
@@ -98,8 +96,12 @@
 
         const sbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
         const urlParams = new URLSearchParams(window.location.search);
-        const deviceId = urlParams.get('id');
         
+        // FIX: Wir unterstützen sowohl die ID "123456" als auch den vollen String "esp32-123456/sensor"
+        let rawId = urlParams.get('id') || "";
+        const dbId = rawId.includes("esp32") ? rawId : `esp32-${rawId}/sensor`;
+        const mqttId = rawId.includes("/") ? rawId.split('/')[0] : `esp32-${rawId}`;
+
         let chartT, chartH, chartV, aqiGauge;
         let currentDays = 1;
 
@@ -128,51 +130,15 @@
                     radialBar: {
                         startAngle: -90, endAngle: 90,
                         hollow: { size: '65%' },
-                        dataLabels: { name: { show: false }, value: { fontSize: '32px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.ceil((v/100)*5) } }
+                        dataLabels: { 
+                            name: { show: false },
+                            value: { fontSize: '32px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.ceil((v/100)*5) } 
+                        }
                     }
                 },
                 fill: { type: 'gradient', gradient: { colorStops: [{ offset: 0, color: "#10b981" }, { offset: 50, color: "#f59e0b" }, { offset: 100, color: "#ef4444" }]}}
             });
             aqiGauge.render();
-        }
-
-        async function fetchHistory() {
-            if (!deviceId) {
-                console.error("KEINE ID GEFUNDEN! Bitte ?id=... an die URL hängen.");
-                return;
-            }
-            
-            const cutoff = new Date();
-            cutoff.setDate(cutoff.getDate() - currentDays);
-            
-            console.log(`Lade Daten für ID ${deviceId} seit ${cutoff.toISOString()}...`);
-
-            const { data, error } = await sbClient.from(CONFIG.dbTable)
-                .select('*')
-                .eq(CONFIG.dbMacColumn, deviceId)
-                .gte('created_at', cutoff.toISOString())
-                .order('created_at', { ascending: true });
-
-            if (error) {
-                console.error("Supabase Fehler:", error.message);
-                return;
-            }
-
-            if (data && data.length > 0) {
-                console.log(`${data.length} historische Datenpunkte erfolgreich geladen.`);
-                
-                chartT.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })) }]);
-                chartH.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })) }]);
-                chartV.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })) }]);
-
-                const last = data[data.length-1];
-                updateUI('temp', last.temperature);
-                updateUI('hum', last.humidity);
-                updateUI('tvoc', last.tvoc);
-                updateUI('co2', last.co2);
-            } else {
-                console.warn("Keine historischen Daten in diesem Zeitraum gefunden.");
-            }
         }
 
         function updateUI(metric, val) {
@@ -192,28 +158,41 @@
             }
         }
 
+        async function fetchHistory() {
+            if (!dbId) return;
+            const cutoff = new Date();
+            cutoff.setDate(cutoff.getDate() - currentDays);
+            
+            const { data, error } = await sbClient.from(CONFIG.dbTable)
+                .select('*')
+                .eq(CONFIG.dbMacColumn, dbId)
+                .gte('created_at', cutoff.toISOString())
+                .order('created_at', { ascending: true });
+
+            if (data && data.length > 0) {
+                chartT.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })) }]);
+                chartH.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })) }]);
+                chartV.updateSeries([{ data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })) }]);
+                const last = data[data.length-1];
+                updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2);
+            } else {
+                console.log("Keine Daten für ID:", dbId, "im Zeitraum gefunden.");
+            }
+        }
+
         function initMqtt() {
             const client = mqtt.connect(CONFIG.mqttBroker, { username: CONFIG.mqttUser, password: CONFIG.mqttPass });
             client.on('connect', () => {
                 document.getElementById('status-badge').innerHTML = '<span class="live-dot bg-green-500"></span> NETWORK LIVE';
-                client.subscribe(`esp32-${deviceId}/sensor`);
+                client.subscribe(`${mqttId}/sensor`);
             });
             client.on('message', (t, msg) => {
-                try {
-                    const data = JSON.parse(msg.toString());
-                    const ts = Date.now();
-                    const tVal = data.temperature || data.temp;
-                    const hVal = data.humidity || data.hum;
-                    
-                    if (tVal !== undefined) chartT.appendData([{ data: [{ x: ts, y: tVal }] }]);
-                    if (hVal !== undefined) chartH.appendData([{ x: ts, y: hVal }]);
-                    if (data.tvoc !== undefined) chartV.appendData([{ data: [{ x: ts, y: data.tvoc }] }]);
-                    
-                    updateUI('temp', tVal);
-                    updateUI('hum', hVal);
-                    updateUI('tvoc', data.tvoc);
-                    updateUI('co2', data.co2);
-                } catch (e) { console.error("MQTT Error", e); }
+                const data = JSON.parse(msg.toString());
+                const ts = Date.now();
+                if (data.temperature) chartT.appendData([{ data: [{ x: ts, y: data.temperature }] }]);
+                if (data.humidity) chartH.appendData([{ data: [{ x: ts, y: data.humidity }] }]);
+                if (data.tvoc) chartV.appendData([{ data: [{ x: ts, y: data.tvoc }] }]);
+                updateUI('temp', data.temperature); updateUI('hum', data.humidity); updateUI('tvoc', data.tvoc); updateUI('co2', data.co2);
             });
         }
 
@@ -224,13 +203,8 @@
             await fetchHistory();
         }
 
-        // STARTABLAUF
         initCharts();
-        if (deviceId) {
-            fetchHistory().then(initMqtt);
-        } else {
-            document.getElementById('aqi-status').innerText = "ID FEHLT!";
-        }
+        if (rawId) fetchHistory().then(initMqtt);
     </script>
 </body>
 </html>
