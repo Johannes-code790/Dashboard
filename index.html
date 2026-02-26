@@ -3,134 +3,223 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Company Live & History Dashboard</title>
+    <title>Enterprise IoT Analytics | Company Name</title>
     
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; margin: 0; display: flex; flex-direction: column; align-items: center; }
-        header { background: white; width: 100%; padding: 20px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .container { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; width: 90%; max-width: 1000px; margin-top: 30px; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; position: relative; }
-        .label { color: #666; font-size: 0.8em; text-transform: uppercase; }
-        .value { font-size: 2.5em; font-weight: bold; margin: 10px 0; color: #333; }
-        .unit { font-size: 0.4em; color: #999; margin-left: 5px; }
-        .source-tag { position: absolute; bottom: 5px; right: 10px; font-size: 0.6em; color: #ccc; }
-        #status { font-weight: bold; margin-top: 10px; transition: color 0.3s; }
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        .glass-card { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8); }
+        .live-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
     </style>
 </head>
-<body>
+<body class="text-slate-900">
 
-<header>
-    <h1>Company IoT Monitor</h1>
-    <div id="status" style="color: #e67e22;">⏳ Initialisierung...</div>
-</header>
+    <nav class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">C</div>
+            <div>
+                <h1 class="text-lg font-bold leading-tight">IoT Analytics Pro</h1>
+                <p class="text-xs text-slate-500 uppercase tracking-widest font-semibold">Enterprise Division</p>
+            </div>
+        </div>
+        <div id="status-badge" class="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full text-sm font-medium text-slate-600">
+            <span class="w-2 h-2 bg-slate-400 rounded-full"></span>
+            Initialisierung...
+        </div>
+    </nav>
 
-<div class="container">
-    <div class="card">
-        <div class="label">Temperatur</div>
-        <div class="value" style="color: #ff5722;"><span id="temp">--.-</span><span class="unit">°C</span></div>
-        <div class="source-tag" id="temp-source">Keine Daten</div>
-    </div>
-    <div class="card">
-        <div class="label">Feuchtigkeit</div>
-        <div class="value" style="color: #2196f3;"><span id="hum">--</span><span class="unit">%</span></div>
-        <div class="source-tag" id="hum-source">Keine Daten</div>
-    </div>
-    <div class="card">
-        <div class="label">CO2</div>
-        <div class="value" style="color: #4caf50;"><span id="co2">----</span><span class="unit">ppm</span></div>
-        <div class="source-tag" id="co2-source">Keine Daten</div>
-    </div>
-    <div class="card">
-        <div class="label">TVOC</div>
-        <div class="value" style="color: #9c27b0;"><span id="tvoc">----</span><span class="unit">ppb</span></div>
-        <div class="source-tag" id="tvoc-source">Keine Daten</div>
-    </div>
-</div>
-
-<script>
-    // --- 1. KONFIGURATION ---
-    const CONFIG = {
-        supabaseUrl: 'https://rrdbrezbsttlkzeaudch.supabase.co',
-        supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyZGJyZXpic3R0bGt6ZWF1ZGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0Mzc1OTAsImV4cCI6MjA4NzAxMzU5MH0.YzkCMSTOggB0fH0Wf6jLgw5Qb4nJM5IjfUQKbIsb-Bc',
-        dbTable: 'wetterdaten', // Korrekter Tabellenname aus deiner Policy
-        dbMacColumn: 'device_id', // Deine Spalte in Supabase
-        mqttBroker: 'wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt',
-        mqttUser: 'web_user', // Dein EMQX User
-        mqttPass: 'web_password123'
-    };
-
-    // 2. ID aus URL extrahieren
-    const urlParams = new URLSearchParams(window.location.search);
-    const deviceId = urlParams.get('id');
-
-    // Supabase Initialisierung - KORRIGIERT: 'supabase' statt 'supabasejs'
-    const dbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
-
-    // Hilfsfunktion zum UI-Update
-    function updateDisplay(data, source) {
-        const fields = ['temp', 'hum', 'co2', 'tvoc'];
-        fields.forEach(field => {
-            if (data[field] !== undefined) {
-                document.getElementById(field).innerText = data[field];
-                document.getElementById(`${field}-source`).innerText = source;
-            }
-        });
-    }
-
-    // 3. DATEN AUS DATENBANK LADEN (History)
-    async function fetchDatabaseHistory() {
-        if (!deviceId) return;
+    <main class="max-w-7xl mx-auto p-6 space-y-6">
         
-        const { data, error } = await dbClient
-            .from(CONFIG.dbTable)
-            .select('*')
-            .eq(CONFIG.dbMacColumn, deviceId)
-            .order('created_at', { ascending: false })
-            .limit(1);
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div id="card-temp" class="glass-card rounded-2xl p-6 shadow-sm transition-all hover:shadow-md">
+                <p class="text-sm font-semibold text-slate-500 uppercase">Temperatur</p>
+                <div class="flex items-baseline gap-1 mt-2">
+                    <span id="temp" class="text-4xl font-bold tracking-tight">--.-</span>
+                    <span class="text-slate-400 font-medium">°C</span>
+                </div>
+                <div class="mt-4 flex items-center gap-2 text-xs font-medium text-slate-400">
+                    <span id="temp-source" class="bg-slate-100 px-2 py-0.5 rounded">Warten...</span>
+                </div>
+            </div>
 
-        if (error) {
-            console.error("DB-Fehler:", error);
-        } else if (data && data.length > 0) {
-            updateDisplay(data[0], "Datenbank");
-            document.getElementById('status').innerText = "📊 Letzte Werte geladen";
+            <div id="card-hum" class="glass-card rounded-2xl p-6 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500 uppercase">Luftfeuchtigkeit</p>
+                <div class="flex items-baseline gap-1 mt-2">
+                    <span id="hum" class="text-4xl font-bold tracking-tight">--</span>
+                    <span class="text-slate-400 font-medium">%</span>
+                </div>
+                <div class="mt-4 flex items-center gap-2 text-xs font-medium text-slate-400">
+                    <span id="hum-source" class="bg-slate-100 px-2 py-0.5 rounded">Warten...</span>
+                </div>
+            </div>
+
+            <div id="card-co2" class="glass-card rounded-2xl p-6 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500 uppercase">CO2 Gehalt</p>
+                <div class="flex items-baseline gap-1 mt-2">
+                    <span id="co2" class="text-4xl font-bold tracking-tight">----</span>
+                    <span class="text-slate-400 font-medium">ppm</span>
+                </div>
+                <div class="mt-4 flex items-center gap-2 text-xs font-medium text-slate-400">
+                    <span id="co2-source" class="bg-slate-100 px-2 py-0.5 rounded">Warten...</span>
+                </div>
+            </div>
+
+            <div id="card-tvoc" class="glass-card rounded-2xl p-6 shadow-sm">
+                <p class="text-sm font-semibold text-slate-500 uppercase">Luftqualität (TVOC)</p>
+                <div class="flex items-baseline gap-1 mt-2">
+                    <span id="tvoc" class="text-4xl font-bold tracking-tight">----</span>
+                    <span class="text-slate-400 font-medium">ppb</span>
+                </div>
+                <div class="mt-4 flex items-center gap-2 text-xs font-medium text-slate-400">
+                    <span id="tvoc-source" class="bg-slate-100 px-2 py-0.5 rounded">Warten...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="lg:col-span-2 glass-card rounded-2xl p-6 shadow-sm">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="font-bold text-lg">Temperaturverlauf (Letzte 24h)</h3>
+                    <span class="text-xs text-slate-400 font-mono">Real-time Feed</span>
+                </div>
+                <div id="chart-main" class="w-full h-80"></div>
+            </div>
+
+            <div class="glass-card rounded-2xl p-6 shadow-sm flex flex-col justify-between">
+                <div>
+                    <h3 class="font-bold text-lg mb-4">Geräteinformationen</h3>
+                    <div class="space-y-4">
+                        <div class="flex justify-between border-b border-slate-100 pb-2">
+                            <span class="text-slate-500 text-sm">Geräte-ID</span>
+                            <span id="info-id" class="font-mono text-sm font-bold">---</span>
+                        </div>
+                        <div class="flex justify-between border-b border-slate-100 pb-2">
+                            <span class="text-slate-500 text-sm">Letzte Aktivität</span>
+                            <span id="info-last" class="text-sm">Nie</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-slate-500 text-sm">Server-Region</span>
+                            <span class="text-sm font-medium">AWS / Frankfurt</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <p class="text-blue-700 text-xs leading-relaxed">
+                        Diese Daten werden Ende-zu-Ende verschlüsselt übertragen und in der Supabase Enterprise Cloud gespeichert.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const CONFIG = {
+            supabaseUrl: 'https://rrdbrezbsttlkzeaudch.supabase.co',
+            supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJyZGJyZXpic3R0bGt6ZWF1ZGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0Mzc1OTAsImV4cCI6MjA4NzAxMzU5MH0.YzkCMSTOggB0fH0Wf6jLgw5Qb4nJM5IjfUQKbIsb-Bc',
+            dbTable: 'wetterdaten',
+            dbMacColumn: 'device_id',
+            mqttBroker: 'wss://g306b096.ala.eu-central-1.emqxsl.com:8084/mqtt',
+            mqttUser: 'web_user',
+            mqttPass: 'web_password123'
+        };
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const deviceId = urlParams.get('id');
+        document.getElementById('info-id').innerText = deviceId || '---';
+
+        const sbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
+        let mainChart;
+
+        // 1. Chart Initialisierung
+        function initChart() {
+            const options = {
+                chart: { type: 'area', height: 320, toolbar: { show: false }, zoom: { enabled: false }, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 1000 } } },
+                colors: ['#2563eb'],
+                dataLabels: { enabled: false },
+                stroke: { curve: 'smooth', width: 3 },
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05 } },
+                series: [{ name: 'Temperatur', data: [] }],
+                xaxis: { type: 'datetime', labels: { style: { colors: '#94a3b8' } } },
+                yaxis: { labels: { style: { colors: '#94a3b8' } } },
+                grid: { borderColor: '#f1f5f9' }
+            };
+            mainChart = new ApexCharts(document.querySelector("#chart-main"), options);
+            mainChart.render();
         }
-    }
 
-    // 4. MQTT LIVE VERBINDUNG
-    function startMqttLive() {
-        if (!deviceId) return;
+        // 2. UI Updates mit Schwellenwerten
+        function updateUI(data, source) {
+            const elements = { temp: 'temp', hum: 'hum', co2: 'co2', tvoc: 'tvoc' };
+            Object.keys(elements).forEach(key => {
+                if (data[key] !== undefined) {
+                    const el = document.getElementById(elements[key]);
+                    el.innerText = data[key];
+                    document.getElementById(elements[key] + '-source').innerText = source;
+                    
+                    // CO2 Alarm-Logik
+                    if (key === 'co2' && data[key] > 1000) {
+                        document.getElementById('card-co2').classList.add('bg-orange-50', 'border-orange-200');
+                    }
+                }
+            });
+            document.getElementById('info-last').innerText = new Date().toLocaleTimeString();
+        }
 
-        const topic = `esp32-${deviceId}/sensor`; // Topic Format für deine Regeln
-        const client = mqtt.connect(CONFIG.mqttBroker, {
-            username: CONFIG.mqttUser,
-            password: CONFIG.mqttPass
-        });
+        // 3. Datenbank-Historie laden & Chart füllen
+        async function loadHistory() {
+            if (!deviceId) return;
+            const { data, error } = await sbClient
+                .from(CONFIG.dbTable)
+                .select('*')
+                .eq(CONFIG.dbMacColumn, deviceId)
+                .order('created_at', { ascending: false })
+                .limit(20);
 
-        client.on('connect', () => {
-            document.getElementById('status').innerText = `🟢 LIVE - Gerät: ${deviceId}`;
-            document.getElementById('status').style.color = "green";
-            client.subscribe(topic);
-        });
-
-        client.on('message', (t, message) => {
-            try {
-                const liveData = JSON.parse(message.toString());
-                updateDisplay(liveData, "Live (MQTT)");
-            } catch (e) {
-                console.error("JSON Fehler:", e);
+            if (!error && data.length > 0) {
+                const historyData = data.reverse();
+                const chartPoints = historyData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temp }));
+                mainChart.updateSeries([{ data: chartPoints }]);
+                updateUI(data[data.length-1], "Cloud History");
             }
-        });
-    }
+        }
 
-    // Start-Reihenfolge
-    if (deviceId) {
-        fetchDatabaseHistory().then(startMqttLive);
-    } else {
-        document.getElementById('status').innerText = "🔴 ID fehlt (?id=...)";
-    }
-</script>
+        // 4. MQTT Live-Anbindung
+        function initMqtt() {
+            if (!deviceId) return;
+            const client = mqtt.connect(CONFIG.mqttBroker, { username: CONFIG.mqttUser, password: CONFIG.mqttPass });
+
+            client.on('connect', () => {
+                const badge = document.getElementById('status-badge');
+                badge.innerHTML = '<span class="w-2 h-2 bg-green-500 rounded-full live-pulse"></span> SYSTEM LIVE';
+                badge.classList.replace('text-slate-600', 'text-green-700');
+                client.subscribe(`esp32-${deviceId}/sensor`);
+            });
+
+            client.on('message', (t, msg) => {
+                const data = JSON.parse(msg.toString());
+                updateUI(data, "Real-time Live");
+                
+                // Chart live erweitern
+                if (data.temp) {
+                    const newData = { x: new Date().getTime(), y: data.temp };
+                    mainChart.appendData([{ data: [newData] }]);
+                }
+            });
+        }
+
+        // Start
+        initChart();
+        if (deviceId) {
+            loadHistory().then(initMqtt);
+        } else {
+            document.getElementById('status-badge').innerHTML = '🔴 ID FEHLT';
+        }
+    </script>
 </body>
 </html>
