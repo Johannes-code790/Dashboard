@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Enterprise Edition</title>
+    <title>QBS Command Center | Stock Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -26,15 +26,13 @@
             <div class="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold shadow-lg">Q</div>
             <h1 class="text-sm font-black uppercase tracking-widest">QBS Command Center</h1>
         </div>
-        <div class="flex items-center gap-4">
-            <div class="flex bg-slate-800 p-1 rounded-lg">
-                <button onclick="changeTimeRange(1)" id="btn-1" class="time-btn active text-white">1 T.</button>
-                <button onclick="changeTimeRange(5)" id="btn-5" class="time-btn text-slate-400">5 T.</button>
-                <button onclick="changeTimeRange(30)" id="btn-30" class="time-btn text-slate-400">1 M.</button>
-            </div>
-            <div id="status-badge" class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-[9px] font-black text-slate-400">
-                <span class="live-dot bg-slate-500"></span> CONNECTING...
-            </div>
+        <div class="flex bg-slate-800 p-1 rounded-lg">
+            <button onclick="changeTimeRange(1)" id="btn-1" class="time-btn active text-white">1 T.</button>
+            <button onclick="changeTimeRange(5)" id="btn-5" class="time-btn text-slate-400">5 T.</button>
+            <button onclick="changeTimeRange(30)" id="btn-30" class="time-btn text-slate-400">1 M.</button>
+        </div>
+        <div id="status-badge" class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-[9px] font-black text-slate-400">
+            <span class="live-dot bg-slate-500"></span> CONNECTING...
         </div>
     </nav>
 
@@ -55,7 +53,7 @@
             </div>
             <div class="dashboard-card lg:col-span-2">
                 <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Temperatur Verlauf (°C)</h3>
-                <div id="chart-temp" class="h-[300px]"></div>
+                <div id="chart-temp" class="h-[350px]"></div>
             </div>
         </div>
 
@@ -92,14 +90,19 @@
         let currentDays = 1;
 
         const baseOptions = (color, min, max, unit) => ({
-            chart: { type: 'area', height: 300, toolbar: { show: false }, animations: { enabled: true, easing: 'linear' }, zoom: { enabled: false } },
+            chart: { type: 'area', height: '100%', toolbar: { show: false }, animations: { enabled: true, easing: 'linear' }, zoom: { enabled: false } },
             series: [{ name: unit, data: [] }],
             colors: [color],
             stroke: { curve: 'smooth', width: 2 },
-            markers: { size: 0 }, // VERSTECKT DIE PUNKTE
-            dataLabels: { enabled: false }, // DEAKTIVIERT DIE ZAHLEN AUF DEM GRAPHEN
+            markers: { size: 0 },
+            dataLabels: { enabled: false },
             fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } },
-            xaxis: { type: 'datetime', labels: { datetimeUTC: false, format: 'dd.MM HH:mm', style: { colors: '#94a3b8', fontSize: '9px' } } },
+            xaxis: { 
+                type: 'datetime', 
+                labels: { datetimeUTC: false, style: { colors: '#94a3b8', fontSize: '9px' } },
+                axisBorder: { show: false },
+                axisTicks: { show: false }
+            },
             yaxis: { min: min, max: max, tickAmount: 4, labels: { formatter: (v) => v.toFixed(unit === 'ppb' ? 0 : 1) + unit, style: { colors: '#94a3b8', fontWeight: 700 } } },
             grid: { borderColor: '#f1f5f9', strokeDashArray: 4 }
         });
@@ -130,24 +133,38 @@
             const cutoff = new Date();
             cutoff.setDate(cutoff.getDate() - currentDays);
             
-            const { data, error } = await sbClient.from(CONFIG.dbTable)
+            const { data } = await sbClient.from(CONFIG.dbTable)
                 .select('*')
                 .eq(CONFIG.dbMacColumn, dbId)
                 .gte('created_at', cutoff.toISOString())
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
-                // DATEN-THINNING: Wir nehmen maximal 500 Punkte, um Überladung zu vermeiden
-                const step = Math.ceil(data.length / 500); 
+                // Aggressives Sampling für Stock-Look: Reduziere auf 200 Punkte für alle Ansichten
+                const step = Math.ceil(data.length / 200); 
                 const sampledData = data.filter((_, i) => i % step === 0);
 
-                chartT.updateSeries([{ data: sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })) }]);
-                chartH.updateSeries([{ data: sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })) }]);
-                chartV.updateSeries([{ data: sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })) }]);
+                const xaxisUpdate = getXAxisConfig(currentDays);
+
+                const update = (chart, dataArray) => {
+                    chart.updateSeries([{ data: dataArray }], true);
+                    chart.updateOptions({ xaxis: xaxisUpdate });
+                };
+
+                update(chartT, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })));
+                update(chartH, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })));
+                update(chartV, sampledData.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })));
 
                 const last = data[data.length-1];
                 updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2);
             }
+        }
+
+        function getXAxisConfig(days) {
+            // Logik basierend auf Referenzbildern
+            if (days === 1) return { labels: { format: 'HH:mm' }, tickAmount: 6 };
+            if (days === 5) return { labels: { format: 'dd. MMM' }, tickAmount: 5 };
+            return { labels: { format: 'dd. MMM' }, tickAmount: 6 };
         }
 
         function updateUI(metric, val) {
