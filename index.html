@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Enterprise Analytics</title>
+    <title>QBS Command Center | Live Analytics</title>
     <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -19,7 +19,6 @@
         .time-btn.active { background-color: #1e293b; color: white; border-color: #1e293b; }
         .live-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        /* Entfernt ApexCharts Toolbar für echten Stock-Look */
         .apexcharts-toolbar { display: none !important; }
     </style>
 </head>
@@ -74,7 +73,7 @@
                 <div id="aqi-gauge" class="w-full"></div>
                 <div class="mt-8 space-y-2">
                     <p id="aqi-status" class="text-xl font-black text-slate-800 uppercase italic">Init...</p>
-                    <p id="aqi-advice" class="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">Warte auf Daten...</p>
+                    <p id="aqi-advice" class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Warte auf Daten...</p>
                 </div>
             </div>
         </div>
@@ -111,20 +110,11 @@
                 stroke: { curve: 'smooth', width: 2 },
                 xaxis: { 
                     type: 'datetime',
-                    labels: { 
-                        datetimeUTC: false,
-                        format: 'HH:mm',
-                        style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 }
-                    },
-                    // Erzeugt das 5-Minuten-Gefühl (TickAmount reguliert die Häufigkeit der Labels)
-                    tickAmount: 12, 
-                    axisBorder: { show: false },
-                    axisTicks: { show: false }
+                    labels: { datetimeUTC: false, format: 'HH:mm', style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } },
+                    tickAmount: 12,
+                    axisBorder: { show: false }, axisTicks: { show: false }
                 },
-                yaxis: { 
-                    min: 0, max: 40, tickAmount: 5,
-                    labels: { style: { colors: '#94a3b8', fontWeight: 700 } } 
-                },
+                yaxis: { min: 0, max: 40, tickAmount: 5, labels: { style: { colors: '#94a3b8', fontWeight: 700 } } },
                 grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
                 legend: { show: false },
                 tooltip: { theme: 'dark', x: { format: 'dd.MM HH:mm' } }
@@ -138,9 +128,7 @@
                     radialBar: {
                         startAngle: -110, endAngle: 110,
                         hollow: { size: '70%' },
-                        dataLabels: {
-                            value: { fontSize: '48px', fontWeight: '900', offsetY: 15, formatter: (v) => Math.round((v/100)*2000) }
-                        }
+                        dataLabels: { value: { fontSize: '48px', fontWeight: '900', offsetY: 15, formatter: (v) => Math.round((v/100)*2000) } }
                     }
                 },
                 fill: {
@@ -161,7 +149,6 @@
             document.getElementById(`card-${m}`).classList.add('active');
             document.getElementById('chart-title').innerText = labels[m];
 
-            // WICHTIG: Serien ein-/ausblenden, aber Daten behalten
             ['temp', 'hum', 'tvoc'].forEach(s => {
                 if (s === m) mainChart.showSeries(s); else mainChart.hideSeries(s);
             });
@@ -179,16 +166,15 @@
             currentDays = d;
             document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
             document.getElementById(`btn-${d}`).classList.add('active');
-            
-            // X-Achse Ticks anpassen für Monat vs Tag
             mainChart.updateOptions({ xaxis: { tickAmount: d === 1 ? 12 : 8 } });
-            
             await fetchHistory();
         }
 
         function updateUI(metric, val) {
             const el = document.getElementById(`val-${metric}`);
-            if (el && val !== undefined) el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
+            if (el && val !== undefined && val !== null) {
+                el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
+            }
 
             if (metric === 'co2' && val !== undefined) {
                 const status = document.getElementById('aqi-status');
@@ -214,20 +200,21 @@
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
+                // HIER: Korrektur der Spaltennamen zu temperature und humidity
                 const series = [
-                    { name: 'temp', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temp })) },
-                    { name: 'hum', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.hum })) },
+                    { name: 'temp', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })) },
+                    { name: 'hum', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })) },
                     { name: 'tvoc', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })) }
                 ];
                 await mainChart.updateSeries(series, true);
                 
-                // Fehler-Prävention: Nur UI updaten wenn Daten da sind
                 const last = data[data.length-1];
                 if (last) {
-                    ['temp','hum','tvoc','co2'].forEach(m => updateUI(m, last[m]));
+                    updateUI('temp', last.temperature);
+                    updateUI('hum', last.humidity);
+                    updateUI('tvoc', last.tvoc);
+                    updateUI('co2', last.co2);
                 }
-                
-                // Ansicht (Series-Visibility) wiederherstellen
                 switchMetric(activeMetric);
             }
         }
@@ -243,22 +230,28 @@
                     const data = JSON.parse(msg.toString());
                     const ts = Date.now();
                     
-                    // Zeichnet ALLE Graphen gleichzeitig fortlaufend im Hintergrund
+                    // Flexibles Mapping für MQTT (unterstützt beide Schreibweisen)
+                    const tVal = data.temperature || data.temp;
+                    const hVal = data.humidity || data.hum;
+                    const tvVal = data.tvoc;
+
                     const updates = [];
-                    if (data.temp !== undefined) updates.push({ name: 'temp', data: [{ x: ts, y: data.temp }] });
-                    if (data.hum !== undefined) updates.push({ name: 'hum', data: [{ x: ts, y: data.hum }] });
-                    if (data.tvoc !== undefined) updates.push({ name: 'tvoc', data: [{ x: ts, y: data.tvoc }] });
+                    if (tVal !== undefined) updates.push({ name: 'temp', data: [{ x: ts, y: tVal }] });
+                    if (hVal !== undefined) updates.push({ name: 'hum', data: [{ x: ts, y: hVal }] });
+                    if (tvVal !== undefined) updates.push({ name: 'tvoc', data: [{ x: ts, y: tvVal }] });
                     
                     if (updates.length > 0) mainChart.appendData(updates);
-                    Object.keys(data).forEach(m => updateUI(m, data[m]));
-                } catch (e) { console.error("MQTT Parse Error", e); }
+                    
+                    if (tVal !== undefined) updateUI('temp', tVal);
+                    if (hVal !== undefined) updateUI('hum', hVal);
+                    if (tvVal !== undefined) updateUI('tvoc', tvVal);
+                    if (data.co2 !== undefined) updateUI('co2', data.co2);
+                } catch (e) { console.error("MQTT Error", e); }
             });
         }
 
         initCharts();
-        if (deviceId) {
-            fetchHistory().then(initMqtt);
-        }
+        if (deviceId) { fetchHistory().then(initMqtt); }
     </script>
 </body>
 </html>
