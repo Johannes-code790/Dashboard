@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Enterprise IoT</title>
+    <title>QBS Command Center | Individual Analytics</title>
     <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -12,15 +12,12 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f8fafc; }
-        .metric-card { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); border: 2px solid transparent; cursor: pointer; }
-        .metric-card.active { border-color: #3b82f6; background-color: #eff6ff; box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.1); }
-        .time-btn { transition: all 0.2s; border: 1px solid #e2e8f0; }
+        body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; }
+        .chart-card { background: white; border-radius: 2rem; padding: 1.5rem; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; }
+        .time-btn { transition: all 0.2s; border: 1px solid #cbd5e1; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; border-radius: 0.75rem; }
         .time-btn.active { background-color: #1e293b; color: white; border-color: #1e293b; }
         .live-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
-        /* Stock Market Chart Styling */
-        .apexcharts-canvas { margin: 0 auto; }
         .apexcharts-toolbar { display: none !important; }
     </style>
 </head>
@@ -31,52 +28,56 @@
             <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-xl shadow-lg">Q</div>
             <h1 class="text-lg font-extrabold uppercase tracking-tight">QBS Command Center</h1>
         </div>
-        <div id="status-badge" class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-2xl text-[10px] font-black text-slate-400">
-            <span class="live-dot bg-slate-500"></span> CONNECTING...
+        <div class="flex items-center gap-4">
+            <div class="flex bg-slate-800 p-1 rounded-xl mr-4">
+                <button onclick="changeTimeRange(1)" id="btn-1" class="time-btn active text-white">1 T.</button>
+                <button onclick="changeTimeRange(5)" id="btn-5" class="time-btn text-slate-400">5 T.</button>
+                <button onclick="changeTimeRange(30)" id="btn-30" class="time-btn text-slate-400">1 M.</button>
+            </div>
+            <div id="status-badge" class="bg-slate-800 border border-slate-700 px-4 py-2 rounded-2xl text-[10px] font-black text-slate-400">
+                <span class="live-dot bg-slate-500"></span> CONNECTING...
+            </div>
         </div>
     </nav>
 
-    <main class="max-w-[1700px] mx-auto p-8 space-y-10">
+    <main class="max-w-[1800px] mx-auto p-6 space-y-6">
         
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div onclick="switchMetric('temp')" id="card-temp" class="metric-card active bg-white rounded-[2rem] p-6 shadow-sm">
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div class="chart-card flex flex-col items-center justify-center text-center">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Air Quality (CO2)</h3>
+                <div id="aqi-gauge" class="w-full"></div>
+                <p id="aqi-status" class="text-lg font-black uppercase italic mt-2">Init...</p>
+                <div class="flex items-baseline gap-1 mt-1">
+                    <span id="val-co2" class="text-2xl font-black">----</span><span class="text-xs font-bold opacity-40">ppm</span>
+                </div>
+            </div>
+
+            <div class="chart-card flex flex-col justify-center">
                 <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Temperatur</p>
-                <div class="flex items-baseline gap-1"><span id="val-temp" class="text-3xl font-black">--.-</span><span class="text-sm font-bold opacity-40">°C</span></div>
+                <div class="flex items-baseline gap-1"><span id="val-temp" class="text-4xl font-black text-orange-500">--.-</span><span class="text-sm font-bold opacity-40">°C</span></div>
             </div>
-            <div onclick="switchMetric('hum')" id="card-hum" class="metric-card bg-white rounded-[2rem] p-6 shadow-sm">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Feuchtigkeit</p>
-                <div class="flex items-baseline gap-1"><span id="val-hum" class="text-3xl font-black">--</span><span class="text-sm font-bold opacity-40">%</span></div>
+            <div class="chart-card flex flex-col justify-center">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Luftfeuchtigkeit</p>
+                <div class="flex items-baseline gap-1"><span id="val-hum" class="text-4xl font-black text-blue-500">--</span><span class="text-sm font-bold opacity-40">%</span></div>
             </div>
-            <div id="card-co2" class="bg-white rounded-[2rem] p-6 shadow-sm border-b-4 border-emerald-500">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">CO2 (AQI)</p>
-                <div class="flex items-baseline gap-1"><span id="val-co2" class="text-3xl font-black">----</span><span class="text-sm font-bold opacity-40">ppm</span></div>
-            </div>
-            <div onclick="switchMetric('tvoc')" id="card-tvoc" class="metric-card bg-white rounded-[2rem] p-6 shadow-sm">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">TVOC</p>
-                <div class="flex items-baseline gap-1"><span id="val-tvoc" class="text-3xl font-black">----</span><span class="text-sm font-bold opacity-40">ppb</span></div>
+            <div class="chart-card flex flex-col justify-center">
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">TVOC Belastung</p>
+                <div class="flex items-baseline gap-1"><span id="val-tvoc" class="text-4xl font-black text-purple-500">----</span><span class="text-sm font-bold opacity-40">ppb</span></div>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div class="lg:col-span-2 bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200">
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
-                    <h3 id="chart-title" class="text-xl font-black text-slate-800 italic uppercase">Temperatur Analyse</h3>
-                    <div class="flex bg-slate-100 p-1 rounded-xl">
-                        <button onclick="changeTimeRange(1)" id="btn-1" class="time-btn active px-4 py-1.5 text-[10px] font-bold uppercase rounded-lg">1 T.</button>
-                        <button onclick="changeTimeRange(5)" id="btn-5" class="time-btn px-4 py-1.5 text-[10px] font-bold uppercase rounded-lg">5 T.</button>
-                        <button onclick="changeTimeRange(30)" id="btn-30" class="time-btn px-4 py-1.5 text-[10px] font-bold uppercase rounded-lg">1 M.</button>
-                    </div>
-                </div>
-                <div id="unified-chart" class="w-full h-[450px]"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="chart-card">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Temperatur Verlauf (°C)</h3>
+                <div id="chart-temp" class="w-full h-[350px]"></div>
             </div>
-
-            <div class="bg-white rounded-[3rem] p-10 shadow-sm border border-slate-200 text-center flex flex-col items-center">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-8 self-start">AQI Index</h3>
-                <div id="aqi-gauge" class="w-full"></div>
-                <div class="mt-8 space-y-2">
-                    <p id="aqi-status" class="text-xl font-black text-slate-800 uppercase italic tracking-tight">Init...</p>
-                    <p id="aqi-advice" class="text-[10px] text-slate-400 font-bold uppercase tracking-widest leading-relaxed">Warte auf Daten...</p>
-                </div>
+            <div class="chart-card">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Feuchtigkeit Verlauf (%)</h3>
+                <div id="chart-hum" class="w-full h-[350px]"></div>
+            </div>
+            <div class="chart-card">
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">TVOC Verlauf (ppb)</h3>
+                <div id="chart-tvoc" class="w-full h-[350px]"></div>
             </div>
         </div>
     </main>
@@ -95,120 +96,75 @@
         const sbClient = supabase.createClient(CONFIG.supabaseUrl, CONFIG.supabaseKey);
         const urlParams = new URLSearchParams(window.location.search);
         const deviceId = urlParams.get('id');
-        let mainChart, aqiGauge;
-        let activeMetric = 'temp';
+        
+        let chartT, chartH, chartV, aqiGauge;
         let currentDays = 1;
 
-        function initCharts() {
-            // Main Stock Chart
-            mainChart = new ApexCharts(document.querySelector("#unified-chart"), {
-                chart: { 
-                    id: 'main-iot', type: 'area', height: 450, 
-                    toolbar: { show: false },
-                    animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 800 } },
-                    zoom: { enabled: false }
-                },
-                series: [{ name: 'temp', data: [] }, { name: 'hum', data: [] }, { name: 'tvoc', data: [] }],
-                colors: ['#f97316', '#3b82f6', '#a855f7'],
-                stroke: { curve: 'smooth', width: 3 },
-                dataLabels: { enabled: false },
-                markers: { size: 0 },
-                xaxis: { 
-                    type: 'datetime',
-                    labels: { 
-                        datetimeUTC: false,
-                        style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 },
-                        format: 'HH:mm'
-                    },
-                    tickAmount: 12, // Reguliert die Häufigkeit der Timestamps (alle ~2h bei 1 Tag, optisch sauber)
-                    axisBorder: { show: false },
-                    axisTicks: { show: false }
-                },
-                yaxis: { 
-                    min: 0, max: 40, tickAmount: 5,
-                    labels: { style: { colors: '#94a3b8', fontWeight: 700 } } 
-                },
-                grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
-                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } },
-                legend: { show: false },
-                tooltip: { theme: 'dark', x: { format: 'dd.MM. HH:mm' } }
-            });
-            mainChart.render().then(() => switchMetric('temp'));
+        const baseOptions = (color, min, max, unit) => ({
+            chart: { type: 'area', height: 350, toolbar: { show: false }, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 800 } }, zoom: { enabled: false } },
+            colors: [color],
+            stroke: { curve: 'smooth', width: 3 },
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } },
+            xaxis: { type: 'datetime', labels: { datetimeUTC: false, format: 'HH:mm', style: { colors: '#94a3b8', fontSize: '10px' } }, axisBorder: { show: false } },
+            yaxis: { min: min, max: max, tickAmount: 5, labels: { formatter: (v) => v.toFixed(unit === 'ppb' ? 0 : 1) + unit, style: { colors: '#94a3b8', fontWeight: 700 } } },
+            grid: { borderColor: '#f1f5f9', strokeDashArray: 4 },
+            dataLabels: { enabled: false }
+        });
 
-            // AQI Gauge mit korrekter Farbausrichtung
+        function initCharts() {
+            chartT = new ApexCharts(document.querySelector("#chart-temp"), baseOptions('#f97316', 0, 40, '°C'));
+            chartH = new ApexCharts(document.querySelector("#chart-hum"), baseOptions('#3b82f6', 0, 100, '%'));
+            chartV = new ApexCharts(document.querySelector("#chart-tvoc"), baseOptions('#a855f7', 0, 1000, 'ppb'));
+
+            [chartT, chartH, chartV].forEach(c => c.render());
+
             aqiGauge = new ApexCharts(document.querySelector("#aqi-gauge"), {
-                chart: { type: 'radialBar', height: 400 },
+                chart: { type: 'radialBar', height: 250 },
                 series: [0],
                 plotOptions: {
                     radialBar: {
                         startAngle: -110, endAngle: 110,
-                        hollow: { size: '70%' },
-                        dataLabels: {
-                            value: { fontSize: '48px', fontWeight: '900', offsetY: 15, formatter: (v) => Math.round((v/100)*2000) }
-                        }
+                        hollow: { size: '65%' },
+                        dataLabels: { value: { fontSize: '24px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.round((v/100)*2000) } }
                     }
                 },
                 fill: {
                     type: 'gradient',
-                    gradient: {
-                        shade: 'dark',
-                        type: 'horizontal',
-                        gradientToColors: ['#ef4444'], // Endfarbe Rot
-                        stops: [0, 100],
-                        colorStops: [
-                            { offset: 0, color: "#10b981", opacity: 1 }, // Start Grün (Niedrig)
-                            { offset: 50, color: "#f59e0b", opacity: 1 }, // Mitte Gelb
-                            { offset: 100, color: "#ef4444", opacity: 1 } // Ende Rot (Hoch)
-                        ]
-                    }
+                    gradient: { colorStops: [
+                        { offset: 0, color: "#10b981", opacity: 1 }, // Niedrig = Grün
+                        { offset: 50, color: "#f59e0b", opacity: 1 }, 
+                        { offset: 100, color: "#ef4444", opacity: 1 } // Hoch = Rot
+                    ]}
                 }
             });
             aqiGauge.render();
         }
 
-        function switchMetric(m) {
-            activeMetric = m;
-            const labels = { temp: 'Temperatur Analyse', hum: 'Feuchtigkeit Analyse', tvoc: 'TVOC Belastung' };
-            const units = { temp: '°C', hum: '%', tvoc: 'ppb' };
-            const ranges = { temp: [0, 40], hum: [0, 100], tvoc: [0, 1000] };
-
-            document.querySelectorAll('.metric-card').forEach(c => c.classList.remove('active'));
-            document.getElementById(`card-${m}`).classList.add('active');
-            document.getElementById('chart-title').innerText = labels[m];
-
-            // Sichtbarkeit steuern - Wichtig: show/hide erhält die Daten im Hintergrund
-            ['temp', 'hum', 'tvoc'].forEach(s => {
-                if (s === m) mainChart.showSeries(s); else mainChart.hideSeries(s);
-            });
-
-            mainChart.updateOptions({
-                yaxis: { 
-                    min: ranges[m][0], max: ranges[m][1], tickAmount: 5,
-                    title: { text: units[m], style: { color: '#64748b', fontWeight: 900 } },
-                    labels: { formatter: (val) => val.toFixed(m === 'tvoc' ? 0 : 1) + ' ' + units[m] }
-                }
-            });
-        }
-
         async function changeTimeRange(d) {
             currentDays = d;
-            document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(`btn-${d}`).classList.add('active');
+            document.querySelectorAll('.time-btn').forEach(b => {
+                b.classList.remove('active', 'text-white');
+                b.classList.add('text-slate-400');
+            });
+            const activeBtn = document.getElementById(`btn-${d}`);
+            activeBtn.classList.add('active', 'text-white');
+            activeBtn.classList.remove('text-slate-400');
+            
             await fetchHistory();
         }
 
         function updateUI(metric, val) {
             const el = document.getElementById(`val-${metric}`);
-            if (el && val !== undefined) el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
-
-            if (metric === 'co2') {
+            if (el && val !== undefined && val !== null) {
+                el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
+            }
+            if (metric === 'co2' && val !== undefined) {
                 const status = document.getElementById('aqi-status');
-                const advice = document.getElementById('aqi-advice');
                 const card = document.getElementById('card-co2');
-                if (val < 600) { status.innerText = "Exzellent"; advice.innerText = "Perfekte Luft."; card.style.borderBottomColor = "#10b981"; }
-                else if (val < 1000) { status.innerText = "Gut"; advice.innerText = "Normale Luft."; card.style.borderBottomColor = "#34d399"; }
-                else if (val < 1500) { status.innerText = "Mäßig"; advice.innerText = "Bitte lüften."; card.style.borderBottomColor = "#f59e0b"; }
-                else { status.innerText = "Kritisch"; advice.innerText = "Sofort lüften!"; card.style.borderBottomColor = "#ef4444"; }
+                if (val < 600) { status.innerText = "Exzellent"; status.className = "text-lg font-black uppercase italic mt-2 text-emerald-600"; }
+                else if (val < 1000) { status.innerText = "Gut"; status.className = "text-lg font-black uppercase italic mt-2 text-green-500"; }
+                else if (val < 1500) { status.innerText = "Mäßig"; status.className = "text-lg font-black uppercase italic mt-2 text-amber-500"; }
+                else { status.innerText = "Kritisch"; status.className = "text-lg font-black uppercase italic mt-2 text-red-600"; }
                 aqiGauge.updateSeries([Math.min((val/2000)*100, 100)]);
             }
         }
@@ -225,15 +181,14 @@
                 .order('created_at', { ascending: true });
 
             if (data && data.length > 0) {
-                // Spaltenmapping auf temperature und humidity
-                const series = [
-                    { name: 'temp', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })) },
-                    { name: 'hum', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })) },
-                    { name: 'tvoc', data: data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })) }
-                ];
-                await mainChart.updateSeries(series, false);
-                switchMetric(activeMetric);
-                
+                const tData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature }));
+                const hData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity }));
+                const vData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc }));
+
+                chartT.updateSeries([{ name: 'Temperatur', data: tData }]);
+                chartH.updateSeries([{ name: 'Feuchtigkeit', data: hData }]);
+                chartV.updateSeries([{ name: 'TVOC', data: vData }]);
+
                 const last = data[data.length-1];
                 updateUI('temp', last.temperature);
                 updateUI('hum', last.humidity);
@@ -253,22 +208,23 @@
                     const data = JSON.parse(msg.toString());
                     const ts = Date.now();
                     
-                    // Flexibles Mapping für MQTT und fortlaufendes Zeichnen ALLER Serien
                     const tVal = data.temperature || data.temp;
                     const hVal = data.humidity || data.hum;
                     const tvVal = data.tvoc;
 
-                    const updates = [];
-                    if (tVal !== undefined) updates.push({ name: 'temp', data: [{ x: ts, y: tVal }] });
-                    if (hVal !== undefined) updates.push({ name: 'hum', data: [{ x: ts, y: hVal }] });
-                    if (tvVal !== undefined) updates.push({ name: 'tvoc', data: [{ x: ts, y: tvVal }] });
-                    
-                    // Zeichnet alle Serien weiter, auch die versteckten
-                    if (updates.length > 0) mainChart.appendData(updates);
-                    
-                    if (tVal !== undefined) updateUI('temp', tVal);
-                    if (hVal !== undefined) updateUI('hum', hVal);
-                    if (tvVal !== undefined) updateUI('tvoc', tvVal);
+                    // APPEND zu jedem einzelnen Chart
+                    if (tVal !== undefined) {
+                        chartT.appendData([{ name: 'Temperatur', data: [{ x: ts, y: tVal }] }]);
+                        updateUI('temp', tVal);
+                    }
+                    if (hVal !== undefined) {
+                        chartH.appendData([{ name: 'Feuchtigkeit', data: [{ x: ts, y: hVal }] }]);
+                        updateUI('hum', hVal);
+                    }
+                    if (tvVal !== undefined) {
+                        chartV.appendData([{ name: 'TVOC', data: [{ x: ts, y: tvVal }] }]);
+                        updateUI('tvoc', tvVal);
+                    }
                     if (data.co2 !== undefined) updateUI('co2', data.co2);
 
                 } catch (e) { console.error("MQTT Error", e); }
