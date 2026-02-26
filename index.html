@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QBS Command Center | Final Stock Edition</title>
+    <title>QBS Command Center | Enterprise Edition</title>
     <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
@@ -33,12 +33,11 @@
             <button onclick="changeTimeRange(30)" id="btn-30" class="time-btn text-slate-400">1 M.</button>
         </div>
         <div id="status-badge" class="bg-slate-800 border border-slate-700 px-3 py-1.5 rounded-xl text-[9px] font-black text-slate-400">
-            <span class="live-dot bg-yellow-500"></span> CONNECTING...
+            <span id="status-dot" class="live-dot bg-yellow-500"></span> <span id="status-text">CONNECTING...</span>
         </div>
     </nav>
 
     <main class="max-w-[1800px] mx-auto p-6 space-y-6">
-        
         <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div class="dashboard-card"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Temperatur</p><div class="flex items-baseline gap-1"><span id="val-temp" class="text-3xl font-black text-orange-500">--.-</span><span class="text-sm font-bold opacity-40">°C</span></div></div>
             <div class="dashboard-card"><p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Luftfeuchtigkeit</p><div class="flex items-baseline gap-1"><span id="val-hum" class="text-3xl font-black text-blue-500">--</span><span class="text-sm font-bold opacity-40">%</span></div></div>
@@ -53,19 +52,19 @@
                 <p id="aqi-status" class="text-sm font-black uppercase italic text-slate-500">Lade...</p>
             </div>
             <div class="dashboard-card lg:col-span-2">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Temperatur Verlauf (°C)</h3>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Temperatur Verlauf</h3>
                 <div id="chart-temp" class="h-[350px]"></div>
             </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Luftfeuchtigkeit Verlauf (%)</h3>
-                <div id="chart-hum" class="h-[350px]"></div>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Luftfeuchtigkeit Verlauf</h3>
+                <div id="chart-hum" class="h-[300px]"></div>
             </div>
             <div class="dashboard-card">
-                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TVOC Verlauf (ppb)</h3>
-                <div id="chart-tvoc" class="h-[350px]"></div>
+                <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">TVOC Verlauf</h3>
+                <div id="chart-tvoc" class="h-[300px]"></div>
             </div>
         </div>
     </main>
@@ -97,7 +96,7 @@
             stroke: { curve: 'smooth', width: 2.5 },
             markers: { size: 0 },
             dataLabels: { enabled: false },
-            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.02 } },
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.02 } },
             xaxis: { 
                 type: 'datetime', 
                 labels: { datetimeUTC: false, style: { colors: '#94a3b8', fontSize: '10px', fontWeight: 600 } },
@@ -134,8 +133,13 @@
             const cutoff = new Date(now.getTime() - currentDays * 24 * 60 * 60 * 1000);
             const { data } = await sbClient.from(CONFIG.dbTable).select('*').eq(CONFIG.dbMacColumn, dbId).gte('created_at', cutoff.toISOString()).order('created_at', { ascending: true });
 
-            if (data && data.length > 0) {
-                const xaxisConfig = { min: cutoff.getTime(), max: now.getTime(), labels: { format: currentDays === 1 ? 'HH:mm' : 'dd. MMM' }, tickAmount: 6 };
+            if (data) {
+                const xaxisConfig = {
+                    min: cutoff.getTime(),
+                    max: now.getTime(),
+                    labels: { format: currentDays === 1 ? 'HH:mm' : 'dd. MMM' },
+                    tickAmount: currentDays === 1 ? 6 : (currentDays === 5 ? 5 : 6)
+                };
                 const update = (chart, dataPoints) => {
                     chart.updateSeries([{ data: dataPoints }], true);
                     chart.updateOptions({ xaxis: xaxisConfig });
@@ -143,8 +147,10 @@
                 update(chartT, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature })));
                 update(chartH, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity })));
                 update(chartV, data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc })));
-                const last = data[data.length-1];
-                updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2);
+                if(data.length > 0) {
+                    const last = data[data.length-1];
+                    updateUI('temp', last.temperature); updateUI('hum', last.humidity); updateUI('tvoc', last.tvoc); updateUI('co2', last.co2);
+                }
             }
         }
 
@@ -165,25 +171,36 @@
         }
 
         function initMqtt() {
-            // Einzigartige ClientID verhindert Verbindungsabbrüche durch doppelte Logins
+            // Zufällige ClientID verhindert connack timeout durch doppelte Logins
             const clientId = 'web_client_' + Math.random().toString(16).substr(2, 8);
-            const client = mqtt.connect(CONFIG.mqttBroker, {
+            
+            const options = {
+                clientId: clientId,
                 username: CONFIG.mqttUser,
                 password: CONFIG.mqttPass,
-                clientId: clientId,
                 clean: true,
-                reconnectPeriod: 2000 // Automatischer Reconnect alle 2 Sek
-            });
+                connectTimeout: 4000,
+                reconnectPeriod: 2000,
+                path: '/mqtt' // EXTREM WICHTIG FÜR EMQX WSS
+            };
+
+            const client = mqtt.connect(CONFIG.mqttBroker, options);
 
             client.on('connect', () => {
-                console.log("MQTT Verbunden");
-                document.getElementById('status-badge').innerHTML = '<span class="live-dot bg-green-500"></span> NETWORK LIVE';
+                document.getElementById('status-dot').className = 'live-dot bg-green-500';
+                document.getElementById('status-text').innerText = 'NETWORK LIVE';
                 client.subscribe(`${mqttId}/sensor`);
             });
 
             client.on('error', (err) => {
-                console.error("MQTT Verbindungsfehler:", err);
-                document.getElementById('status-badge').innerHTML = '<span class="live-dot bg-red-500"></span> ERROR';
+                console.error("MQTT Fehler:", err);
+                document.getElementById('status-dot').className = 'live-dot bg-red-500';
+                document.getElementById('status-text').innerText = 'ERROR';
+            });
+
+            client.on('close', () => {
+                document.getElementById('status-dot').className = 'live-dot bg-red-500';
+                document.getElementById('status-text').innerText = 'ERROR';
             });
 
             client.on('message', (t, msg) => {
