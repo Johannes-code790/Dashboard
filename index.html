@@ -13,8 +13,8 @@
 
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #f1f5f9; }
-        .chart-card { background: white; border-radius: 2rem; padding: 1.5rem; shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); border: 1px solid #e2e8f0; }
-        .time-btn { transition: all 0.2s; border: 1px solid #cbd5e1; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; border-radius: 0.75rem; }
+        .chart-card { background: white; border-radius: 2rem; padding: 1.5rem; border: 1px solid #e2e8f0; min-height: 200px; }
+        .time-btn { transition: all 0.2s; border: 1px solid #cbd5e1; padding: 0.5rem 1rem; font-size: 0.75rem; font-weight: 700; border-radius: 0.75rem; }
         .time-btn.active { background-color: #1e293b; color: white; border-color: #1e293b; }
         .live-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; animation: pulse 2s infinite; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
@@ -44,7 +44,7 @@
         
         <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
             <div class="chart-card flex flex-col items-center justify-center text-center">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Air Quality (CO2)</h3>
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">CO2 (AQI)</h3>
                 <div id="aqi-gauge" class="w-full"></div>
                 <p id="aqi-status" class="text-lg font-black uppercase italic mt-2">Init...</p>
                 <div class="flex items-baseline gap-1 mt-1">
@@ -57,27 +57,27 @@
                 <div class="flex items-baseline gap-1"><span id="val-temp" class="text-4xl font-black text-orange-500">--.-</span><span class="text-sm font-bold opacity-40">°C</span></div>
             </div>
             <div class="chart-card flex flex-col justify-center">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Luftfeuchtigkeit</p>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Feuchtigkeit</p>
                 <div class="flex items-baseline gap-1"><span id="val-hum" class="text-4xl font-black text-blue-500">--</span><span class="text-sm font-bold opacity-40">%</span></div>
             </div>
             <div class="chart-card flex flex-col justify-center">
-                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">TVOC Belastung</p>
+                <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">TVOC</p>
                 <div class="flex items-baseline gap-1"><span id="val-tvoc" class="text-4xl font-black text-purple-500">----</span><span class="text-sm font-bold opacity-40">ppb</span></div>
             </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="chart-card">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Temperatur Verlauf (°C)</h3>
-                <div id="chart-temp" class="w-full h-[350px]"></div>
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Temperatur Verlauf</h3>
+                <div id="chart-temp" class="w-full h-[350px]"><p class="text-center text-slate-300 mt-20">Lade Daten...</p></div>
             </div>
             <div class="chart-card">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Feuchtigkeit Verlauf (%)</h3>
-                <div id="chart-hum" class="w-full h-[350px]"></div>
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">Feuchtigkeit Verlauf</h3>
+                <div id="chart-hum" class="w-full h-[350px]"><p class="text-center text-slate-300 mt-20">Lade Daten...</p></div>
             </div>
             <div class="chart-card">
-                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">TVOC Verlauf (ppb)</h3>
-                <div id="chart-tvoc" class="w-full h-[350px]"></div>
+                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6">TVOC Verlauf</h3>
+                <div id="chart-tvoc" class="w-full h-[350px]"><p class="text-center text-slate-300 mt-20">Lade Daten...</p></div>
             </div>
         </div>
     </main>
@@ -102,6 +102,7 @@
 
         const baseOptions = (color, min, max, unit) => ({
             chart: { type: 'area', height: 350, toolbar: { show: false }, animations: { enabled: true, easing: 'linear', dynamicAnimation: { speed: 800 } }, zoom: { enabled: false } },
+            series: [{ name: unit, data: [] }],
             colors: [color],
             stroke: { curve: 'smooth', width: 3 },
             fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05 } },
@@ -112,32 +113,33 @@
         });
 
         function initCharts() {
-            chartT = new ApexCharts(document.querySelector("#chart-temp"), baseOptions('#f97316', 0, 40, '°C'));
-            chartH = new ApexCharts(document.querySelector("#chart-hum"), baseOptions('#3b82f6', 0, 100, '%'));
-            chartV = new ApexCharts(document.querySelector("#chart-tvoc"), baseOptions('#a855f7', 0, 1000, 'ppb'));
+            try {
+                chartT = new ApexCharts(document.querySelector("#chart-temp"), baseOptions('#f97316', 0, 40, '°C'));
+                chartH = new ApexCharts(document.querySelector("#chart-hum"), baseOptions('#3b82f6', 0, 100, '%'));
+                chartV = new ApexCharts(document.querySelector("#chart-tvoc"), baseOptions('#a855f7', 0, 1000, 'ppb'));
 
-            [chartT, chartH, chartV].forEach(c => c.render());
+                chartT.render();
+                chartH.render();
+                chartV.render();
 
-            aqiGauge = new ApexCharts(document.querySelector("#aqi-gauge"), {
-                chart: { type: 'radialBar', height: 250 },
-                series: [0],
-                plotOptions: {
-                    radialBar: {
-                        startAngle: -110, endAngle: 110,
-                        hollow: { size: '65%' },
-                        dataLabels: { value: { fontSize: '24px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.round((v/100)*2000) } }
-                    }
-                },
-                fill: {
-                    type: 'gradient',
-                    gradient: { colorStops: [
-                        { offset: 0, color: "#10b981", opacity: 1 }, // Niedrig = Grün
-                        { offset: 50, color: "#f59e0b", opacity: 1 }, 
-                        { offset: 100, color: "#ef4444", opacity: 1 } // Hoch = Rot
-                    ]}
-                }
-            });
-            aqiGauge.render();
+                aqiGauge = new ApexCharts(document.querySelector("#aqi-gauge"), {
+                    chart: { type: 'radialBar', height: 250 },
+                    series: [0],
+                    plotOptions: {
+                        radialBar: {
+                            startAngle: -110, endAngle: 110,
+                            hollow: { size: '65%' },
+                            dataLabels: { value: { fontSize: '24px', fontWeight: '900', offsetY: 5, formatter: (v) => Math.round((v/100)*2000) } }
+                        }
+                    },
+                    fill: { type: 'gradient', gradient: { colorStops: [
+                        { offset: 0, color: "#10b981", opacity: 1 },
+                        { offset: 50, color: "#f59e0b", opacity: 1 },
+                        { offset: 100, color: "#ef4444", opacity: 1 }
+                    ]}}
+                });
+                aqiGauge.render();
+            } catch (e) { console.error("Initialisierung fehlgeschlagen:", e); }
         }
 
         async function changeTimeRange(d) {
@@ -147,30 +149,33 @@
                 b.classList.add('text-slate-400');
             });
             const activeBtn = document.getElementById(`btn-${d}`);
-            activeBtn.classList.add('active', 'text-white');
-            activeBtn.classList.remove('text-slate-400');
-            
+            if(activeBtn) {
+                activeBtn.classList.add('active', 'text-white');
+                activeBtn.classList.remove('text-slate-400');
+            }
             await fetchHistory();
         }
 
         function updateUI(metric, val) {
+            if (val === undefined || val === null) return;
             const el = document.getElementById(`val-${metric}`);
-            if (el && val !== undefined && val !== null) {
-                el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
-            }
-            if (metric === 'co2' && val !== undefined) {
+            if (el) el.innerText = (metric === 'temp') ? parseFloat(val).toFixed(1) : Math.round(val);
+            
+            if (metric === 'co2') {
                 const status = document.getElementById('aqi-status');
-                const card = document.getElementById('card-co2');
-                if (val < 600) { status.innerText = "Exzellent"; status.className = "text-lg font-black uppercase italic mt-2 text-emerald-600"; }
-                else if (val < 1000) { status.innerText = "Gut"; status.className = "text-lg font-black uppercase italic mt-2 text-green-500"; }
-                else if (val < 1500) { status.innerText = "Mäßig"; status.className = "text-lg font-black uppercase italic mt-2 text-amber-500"; }
-                else { status.innerText = "Kritisch"; status.className = "text-lg font-black uppercase italic mt-2 text-red-600"; }
-                aqiGauge.updateSeries([Math.min((val/2000)*100, 100)]);
+                if (status) {
+                    if (val < 600) { status.innerText = "Exzellent"; status.style.color = "#059669"; }
+                    else if (val < 1000) { status.innerText = "Gut"; status.style.color = "#10b981"; }
+                    else if (val < 1500) { status.innerText = "Mäßig"; status.style.color = "#d97706"; }
+                    else { status.innerText = "Kritisch"; status.style.color = "#dc2626"; }
+                }
+                if (aqiGauge) aqiGauge.updateSeries([Math.min((val/2000)*100, 100)]);
             }
         }
 
         async function fetchHistory() {
-            if (!deviceId) return;
+            if (!deviceId) { console.warn("Keine ID in URL!"); return; }
+            
             const cutoff = new Date();
             cutoff.setDate(cutoff.getDate() - currentDays);
 
@@ -180,21 +185,22 @@
                 .gte('created_at', cutoff.toISOString())
                 .order('created_at', { ascending: true });
 
-            if (data && data.length > 0) {
-                const tData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature }));
-                const hData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity }));
-                const vData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc }));
+            if (error) { console.error("Supabase Error:", error); return; }
+            if (!data || data.length === 0) { console.warn("Keine Daten gefunden für ID:", deviceId); return; }
 
-                chartT.updateSeries([{ name: 'Temperatur', data: tData }]);
-                chartH.updateSeries([{ name: 'Feuchtigkeit', data: hData }]);
-                chartV.updateSeries([{ name: 'TVOC', data: vData }]);
+            const tData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.temperature }));
+            const hData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.humidity }));
+            const vData = data.map(d => ({ x: new Date(d.created_at).getTime(), y: d.tvoc }));
 
-                const last = data[data.length-1];
-                updateUI('temp', last.temperature);
-                updateUI('hum', last.humidity);
-                updateUI('tvoc', last.tvoc);
-                updateUI('co2', last.co2);
-            }
+            if(chartT) chartT.updateSeries([{ data: tData }]);
+            if(chartH) chartH.updateSeries([{ data: hData }]);
+            if(chartV) chartV.updateSeries([{ data: vData }]);
+
+            const last = data[data.length-1];
+            updateUI('temp', last.temperature);
+            updateUI('hum', last.humidity);
+            updateUI('tvoc', last.tvoc);
+            updateUI('co2', last.co2);
         }
 
         function initMqtt() {
@@ -212,27 +218,31 @@
                     const hVal = data.humidity || data.hum;
                     const tvVal = data.tvoc;
 
-                    // APPEND zu jedem einzelnen Chart
-                    if (tVal !== undefined) {
-                        chartT.appendData([{ name: 'Temperatur', data: [{ x: ts, y: tVal }] }]);
+                    if (tVal !== undefined && chartT) {
+                        chartT.appendData([{ data: [{ x: ts, y: tVal }] }]);
                         updateUI('temp', tVal);
                     }
-                    if (hVal !== undefined) {
-                        chartH.appendData([{ name: 'Feuchtigkeit', data: [{ x: ts, y: hVal }] }]);
+                    if (hVal !== undefined && chartH) {
+                        chartH.appendData([{ data: [{ x: ts, y: hVal }] }]);
                         updateUI('hum', hVal);
                     }
-                    if (tvVal !== undefined) {
-                        chartV.appendData([{ name: 'TVOC', data: [{ x: ts, y: tvVal }] }]);
+                    if (tvVal !== undefined && chartV) {
+                        chartV.appendData([{ data: [{ x: ts, y: tvVal }] }]);
                         updateUI('tvoc', tvVal);
                     }
                     if (data.co2 !== undefined) updateUI('co2', data.co2);
 
-                } catch (e) { console.error("MQTT Error", e); }
+                } catch (e) { console.error("MQTT Parse Error:", e); }
             });
         }
 
+        // Startvorgang
         initCharts();
-        if (deviceId) { fetchHistory().then(initMqtt); }
+        if (deviceId) {
+            fetchHistory().then(initMqtt);
+        } else {
+            alert("Bitte hänge ?id=DEINE_ID an die URL an!");
+        }
     </script>
 </body>
 </html>
